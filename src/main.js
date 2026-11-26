@@ -7,7 +7,9 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#101412');
+const fogColor = new THREE.Color('#dce8f0');
+scene.background = fogColor;
+scene.fog = new THREE.Fog(fogColor, 12, 45);
 
 const camera = new THREE.PerspectiveCamera(
   45,
@@ -23,6 +25,14 @@ scene.add(new THREE.AmbientLight(0xffffff, 1.5));
 const light = new THREE.DirectionalLight(0xffffff, 3);
 light.position.set(3, 4, 5);
 scene.add(light);
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(200, 200),
+  new THREE.MeshStandardMaterial({ color: '#f6f9fc' }),
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.8;
+scene.add(ground);
 
 const geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
 const material = new THREE.MeshStandardMaterial({ color: '#39e75f' });
