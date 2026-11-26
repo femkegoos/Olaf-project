@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinnedModel } from 'three/addons/utils/SkeletonUtils.js';
 import { Footprints } from './Footprints.js';
+import { createWanderTarget } from './Wander.js';
 
 let snowgieModelPromise = null;
 
@@ -31,6 +32,7 @@ export class Snowgie {
     this.initialTarget = options.initialTarget
       ? options.initialTarget.clone()
       : null;
+    this.camera = options.camera || null;
     this.modelHeight = options.height || 1.5;
     this.footprints = new Footprints(scene, groundY, this.modelHeight / 1.5);
     this.group = null;
@@ -43,6 +45,7 @@ export class Snowgie {
     this.rightFootRestRotation = 0;
     this.movementTime = 0;
     this.movementSpeed = 4;
+    this.currentSpeed = 0;
     this.moveDirection = new THREE.Vector3();
     this.separationDirection = new THREE.Vector3();
     this.neighborOffset = new THREE.Vector3();
@@ -126,11 +129,7 @@ export class Snowgie {
       return;
     }
 
-    this.wanderTarget.set(
-      THREE.MathUtils.randFloatSpread(180),
-      0,
-      THREE.MathUtils.randFloatSpread(180),
-    );
+    this.wanderTarget.copy(createWanderTarget(this.camera));
   }
 
   setNeighbors(snowgies) {
@@ -144,7 +143,7 @@ export class Snowgie {
 
     this.moveDirection.subVectors(this.wanderTarget, this.group.position);
     let distanceToTarget = this.moveDirection.length();
-    if (distanceToTarget < 0.5) {
+    if (distanceToTarget < 1.5) {
       this.chooseWanderTarget();
       this.moveDirection.subVectors(this.wanderTarget, this.group.position);
       distanceToTarget = this.moveDirection.length();
@@ -176,21 +175,40 @@ export class Snowgie {
         .normalize();
     }
 
-    this.group.rotation.y = Math.atan2(this.moveDirection.x, this.moveDirection.z);
+    const targetRotation = Math.atan2(this.moveDirection.x, this.moveDirection.z);
+    const rotationDelta = Math.atan2(
+      Math.sin(targetRotation - this.group.rotation.y),
+      Math.cos(targetRotation - this.group.rotation.y),
+    );
+    this.group.rotation.y += rotationDelta * (1 - Math.exp(-5 * delta));
+    this.moveDirection.set(
+      Math.sin(this.group.rotation.y),
+      0,
+      Math.cos(this.group.rotation.y),
+    );
+    const targetSpeed = this.movementSpeed
+      * THREE.MathUtils.smoothstep(distanceToTarget, 1.5, 5);
+    this.currentSpeed = THREE.MathUtils.damp(
+      this.currentSpeed,
+      targetSpeed,
+      4,
+      delta,
+    );
+    const isMoving = this.currentSpeed > 0.35;
     this.footprints.update(
       delta,
-      true,
+      isMoving,
       this.group,
       this.leftFootOffset,
       this.rightFootOffset,
     );
     this.group.position.addScaledVector(
       this.moveDirection,
-      Math.min(this.movementSpeed * delta, distanceToTarget),
+      Math.min(this.currentSpeed * delta, distanceToTarget),
     );
     this.movementTime += delta;
 
-    this.animateFeet(true, delta);
+    this.animateFeet(isMoving, delta);
     if (this.mixer) {
       this.mixer.update(delta);
     }

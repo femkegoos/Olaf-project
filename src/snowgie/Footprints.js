@@ -10,7 +10,7 @@ export class Footprints {
     this.footprints = [];
     this.lifetime = 3.5;
     this.baseOpacity = 0.55;
-    this.stepInterval = 0.06;
+    this.stepInterval = 0.12;
     this.geometry = this.createGeometry(scale);
     this.softEdgeTexture = this.createSoftEdgeTexture();
     this.material = new THREE.MeshBasicMaterial({

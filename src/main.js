@@ -7,7 +7,9 @@ import './style.css';
 const canvas = document.querySelector('#scene');
 const sceneManager = new SceneManager(canvas);
 const snowgies = [
-  new Snowgie(sceneManager.scene, sceneManager.ground.position.y),
+  new Snowgie(sceneManager.scene, sceneManager.ground.position.y, {
+    camera: sceneManager.camera,
+  }),
   ...createSnowgiePopulation(
     sceneManager.scene,
     sceneManager.ground.position.y,
