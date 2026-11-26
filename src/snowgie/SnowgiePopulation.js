@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { clone as cloneSkinnedModel } from 'three/addons/utils/SkeletonUtils.js';
 import { loadSnowgieModel } from './Snowgie.js';
 
 export function createSnowgiePopulation(scene, groundY, count = 35) {
@@ -11,7 +12,7 @@ export function createSnowgiePopulation(scene, groundY, count = 35) {
         const z = Math.sin(angle) * distance;
         const modelScale = 0.45 + Math.random() * 0.75;
 
-        const model = gltf.scene.clone(true);
+        const model = cloneSkinnedModel(gltf.scene);
         const bounds = new THREE.Box3().setFromObject(model);
         const size = bounds.getSize(new THREE.Vector3());
         const center = bounds.getCenter(new THREE.Vector3());

@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { createSnowTexture } from '../textures/snowTexture.js';
 
 export class SceneManager {
@@ -11,19 +10,22 @@ export class SceneManager {
     this.scene = new THREE.Scene();
     const fogColor = new THREE.Color('#dceefa');
     this.scene.background = fogColor;
-    this.scene.fog = new THREE.Fog(fogColor, 12, 45);
+    this.scene.fog = new THREE.Fog(fogColor, 100, 200);
 
-    this.camera = new THREE.PerspectiveCamera(
-      45,
-      window.innerWidth / window.innerHeight,
+    this.cameraViewSize = 60;
+    const aspect = window.innerWidth / window.innerHeight;
+    const viewHeight = this.cameraViewSize * Math.max(1, 1 / aspect);
+    const viewWidth = viewHeight * aspect;
+    this.camera = new THREE.OrthographicCamera(
+      -viewWidth / 2,
+      viewWidth / 2,
+      viewHeight / 2,
+      -viewHeight / 2,
       0.1,
-      100,
+      200,
     );
-    this.camera.position.set(3, 3, 4);
-
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping = true;
-    this.controls.target.y = 0.5;
+    this.camera.position.set(0, 60, 45);
+    this.camera.lookAt(0, 0, 0);
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.5));
 
@@ -43,33 +45,23 @@ export class SceneManager {
     this.ground.position.y = -0.8;
     this.scene.add(this.ground);
 
-    this.desiredTarget = new THREE.Vector3();
     this.handleResize = this.handleResize.bind(this);
     window.addEventListener('resize', this.handleResize);
   }
 
   handleResize() {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+    const aspect = window.innerWidth / window.innerHeight;
+    const viewHeight = this.cameraViewSize * Math.max(1, 1 / aspect);
+    const viewWidth = viewHeight * aspect;
+    this.camera.left = -viewWidth / 2;
+    this.camera.right = viewWidth / 2;
+    this.camera.top = viewHeight / 2;
+    this.camera.bottom = -viewHeight / 2;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   }
 
-  follow(targetPosition, delta) {
-    if (!targetPosition) {
-      return;
-    }
-
-    this.desiredTarget.set(targetPosition.x, 0.5, targetPosition.z);
-    const followChange = this.desiredTarget
-      .sub(this.controls.target)
-      .multiplyScalar(1 - Math.exp(-5 * delta));
-
-    this.controls.target.add(followChange);
-    this.camera.position.add(followChange);
-  }
-
   render() {
-    this.controls.update();
     this.renderer.render(this.scene, this.camera);
   }
 }

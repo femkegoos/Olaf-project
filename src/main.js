@@ -11,9 +11,7 @@ createSnowgiePopulation(sceneManager.scene, sceneManager.ground.position.y, 35);
 const clock = new THREE.Clock();
 function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
-  const snowgiePosition = snowgie.update(delta);
-
-  sceneManager.follow(snowgiePosition, delta);
+  snowgie.update(delta);
   sceneManager.render();
 }
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinnedModel } from 'three/addons/utils/SkeletonUtils.js';
 import { Footprints } from './Footprints.js';
 
 let snowgieModelPromise = null;
@@ -32,17 +33,9 @@ export class Snowgie {
     this.leftFootRestRotation = 0;
     this.rightFootRestRotation = 0;
     this.movementTime = 0;
-    this.keysPressed = new Set();
-    this.movementKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
-    this.movementSpeed = 2.5;
+    this.movementSpeed = 4;
     this.moveDirection = new THREE.Vector3();
-
-    this.handleKeyDown = this.handleKeyDown.bind(this);
-    this.handleKeyUp = this.handleKeyUp.bind(this);
-    this.clearKeys = this.clearKeys.bind(this);
-    window.addEventListener('keydown', this.handleKeyDown);
-    window.addEventListener('keyup', this.handleKeyUp);
-    window.addEventListener('blur', this.clearKeys);
+    this.wanderTarget = new THREE.Vector3();
 
     this.loadModel();
   }
@@ -64,7 +57,7 @@ export class Snowgie {
   }
 
   addModel(gltf) {
-    const model = gltf.scene.clone(true);
+    const model = cloneSkinnedModel(gltf.scene);
     const bounds = new THREE.Box3().setFromObject(model);
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
@@ -101,19 +94,14 @@ export class Snowgie {
     }
   }
 
-  handleKeyDown(event) {
-    if (this.movementKeys.has(event.key)) {
-      event.preventDefault();
-      this.keysPressed.add(event.key);
-    }
-  }
-
-  handleKeyUp(event) {
-    this.keysPressed.delete(event.key);
-  }
-
-  clearKeys() {
-    this.keysPressed.clear();
+  chooseWanderTarget() {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = Math.sqrt(Math.random()) * 25;
+    this.wanderTarget.set(
+      Math.cos(angle) * distance,
+      0,
+      Math.sin(angle) * distance,
+    );
   }
 
   update(delta) {
@@ -121,26 +109,28 @@ export class Snowgie {
       return null;
     }
 
-    this.moveDirection.set(
-      Number(this.keysPressed.has('ArrowRight')) - Number(this.keysPressed.has('ArrowLeft')),
-      0,
-      Number(this.keysPressed.has('ArrowDown')) - Number(this.keysPressed.has('ArrowUp')),
-    );
-
-    const isMoving = this.moveDirection.lengthSq() > 0;
-    if (isMoving) {
-      this.moveDirection.normalize();
-      this.group.position.addScaledVector(this.moveDirection, this.movementSpeed * delta);
-      this.group.rotation.y = Math.atan2(this.moveDirection.x, this.moveDirection.z);
-      this.movementTime += delta;
+    this.moveDirection.subVectors(this.wanderTarget, this.group.position);
+    let distanceToTarget = this.moveDirection.length();
+    if (distanceToTarget < 0.5) {
+      this.chooseWanderTarget();
+      this.moveDirection.subVectors(this.wanderTarget, this.group.position);
+      distanceToTarget = this.moveDirection.length();
     }
 
-    this.animateFeet(isMoving, delta);
+    this.moveDirection.normalize();
+    this.group.position.addScaledVector(
+      this.moveDirection,
+      Math.min(this.movementSpeed * delta, distanceToTarget),
+    );
+    this.group.rotation.y = Math.atan2(this.moveDirection.x, this.moveDirection.z);
+    this.movementTime += delta;
+
+    this.animateFeet(true, delta);
     if (this.mixer) {
       this.mixer.update(delta);
     }
 
-    this.footprints.update(delta, isMoving, this.group, this.leftFoot, this.rightFoot);
+    this.footprints.update(delta, true, this.group, this.leftFoot, this.rightFoot);
 
     return this.group.position;
   }
