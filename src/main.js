@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import './style.css';
 
 const canvas = document.querySelector('#scene');
@@ -19,6 +20,9 @@ const camera = new THREE.PerspectiveCamera(
 );
 camera.position.set(3, 2.5, 4);
 camera.lookAt(0, 0, 0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
 
 scene.add(new THREE.AmbientLight(0xffffff, 1.5));
 
@@ -50,6 +54,7 @@ window.addEventListener('resize', resize);
 function animate() {
   cube.rotation.x += 0.005;
   cube.rotation.y += 0.008;
+  controls.update();
   renderer.render(scene, camera);
 }
 
