@@ -22,19 +22,31 @@ export function loadSnowgieModel() {
 }
 
 export class Snowgie {
-  constructor(scene, groundY) {
+  constructor(scene, groundY, options = {}) {
     this.scene = scene;
     this.groundY = groundY;
-    this.footprints = new Footprints(scene, groundY);
+    this.startPosition = options.position
+      ? options.position.clone()
+      : new THREE.Vector3();
+    this.initialTarget = options.initialTarget
+      ? options.initialTarget.clone()
+      : null;
+    this.modelHeight = options.height || 1.5;
+    this.footprints = new Footprints(scene, groundY, this.modelHeight / 1.5);
     this.group = null;
     this.mixer = null;
     this.leftFoot = null;
     this.rightFoot = null;
+    this.leftFootOffset = null;
+    this.rightFootOffset = null;
     this.leftFootRestRotation = 0;
     this.rightFootRestRotation = 0;
     this.movementTime = 0;
     this.movementSpeed = 4;
     this.moveDirection = new THREE.Vector3();
+    this.separationDirection = new THREE.Vector3();
+    this.neighborOffset = new THREE.Vector3();
+    this.neighbors = [];
     this.wanderTarget = new THREE.Vector3();
 
     this.loadModel();
@@ -61,7 +73,7 @@ export class Snowgie {
     const bounds = new THREE.Box3().setFromObject(model);
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
-    const scale = 1.5 / (size.y || 1);
+    const scale = this.modelHeight / (size.y || 1);
 
     model.scale.setScalar(scale);
     model.position.set(
@@ -71,11 +83,15 @@ export class Snowgie {
     );
 
     this.group = new THREE.Group();
+    this.group.position.copy(this.startPosition);
     this.group.add(model);
     this.scene.add(this.group);
+    this.chooseWanderTarget();
 
     this.leftFoot = model.getObjectByName('bone_L_foot_03');
     this.rightFoot = model.getObjectByName('bone_R_foot_02');
+    this.leftFootOffset = this.getFootOffset(this.leftFoot);
+    this.rightFootOffset = this.getFootOffset(this.rightFoot);
     if (this.leftFoot) {
       this.leftFootRestRotation = this.leftFoot.rotation.x;
     } else {
@@ -94,14 +110,31 @@ export class Snowgie {
     }
   }
 
+  getFootOffset(foot) {
+    if (!foot) {
+      return null;
+    }
+
+    this.group.updateMatrixWorld(true);
+    return this.group.worldToLocal(foot.getWorldPosition(new THREE.Vector3()));
+  }
+
   chooseWanderTarget() {
-    const angle = Math.random() * Math.PI * 2;
-    const distance = Math.sqrt(Math.random()) * 25;
+    if (this.initialTarget) {
+      this.wanderTarget.copy(this.initialTarget);
+      this.initialTarget = null;
+      return;
+    }
+
     this.wanderTarget.set(
-      Math.cos(angle) * distance,
+      THREE.MathUtils.randFloatSpread(180),
       0,
-      Math.sin(angle) * distance,
+      THREE.MathUtils.randFloatSpread(180),
     );
+  }
+
+  setNeighbors(snowgies) {
+    this.neighbors = snowgies.filter((snowgie) => snowgie !== this);
   }
 
   update(delta) {
@@ -118,19 +151,49 @@ export class Snowgie {
     }
 
     this.moveDirection.normalize();
+    this.separationDirection.set(0, 0, 0);
+    const separationRadius = 6;
+    for (const neighbor of this.neighbors) {
+      if (!neighbor.group) {
+        continue;
+      }
+
+      const distance = this.group.position.distanceTo(neighbor.group.position);
+      if (distance > 0 && distance < separationRadius) {
+        this.neighborOffset
+          .subVectors(this.group.position, neighbor.group.position)
+          .normalize();
+        this.separationDirection.addScaledVector(
+          this.neighborOffset,
+          1 - distance / separationRadius,
+        );
+      }
+    }
+
+    if (this.separationDirection.lengthSq() > 0) {
+      this.moveDirection
+        .addScaledVector(this.separationDirection, 2.5)
+        .normalize();
+    }
+
+    this.group.rotation.y = Math.atan2(this.moveDirection.x, this.moveDirection.z);
+    this.footprints.update(
+      delta,
+      true,
+      this.group,
+      this.leftFootOffset,
+      this.rightFootOffset,
+    );
     this.group.position.addScaledVector(
       this.moveDirection,
       Math.min(this.movementSpeed * delta, distanceToTarget),
     );
-    this.group.rotation.y = Math.atan2(this.moveDirection.x, this.moveDirection.z);
     this.movementTime += delta;
 
     this.animateFeet(true, delta);
     if (this.mixer) {
       this.mixer.update(delta);
     }
-
-    this.footprints.update(delta, true, this.group, this.leftFoot, this.rightFoot);
 
     return this.group.position;
   }

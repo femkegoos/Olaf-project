@@ -1,38 +1,50 @@
 import * as THREE from 'three';
-import { clone as cloneSkinnedModel } from 'three/addons/utils/SkeletonUtils.js';
-import { loadSnowgieModel } from './Snowgie.js';
+import { Snowgie } from './Snowgie.js';
 
-export function createSnowgiePopulation(scene, groundY, count = 35) {
-  loadSnowgieModel()
-    .then((gltf) => {
-      for (let index = 0; index < count; index += 1) {
-        const angle = Math.random() * Math.PI * 2;
-        const distance = 5 + Math.sqrt(Math.random()) * 25;
-        const x = Math.cos(angle) * distance;
-        const z = Math.sin(angle) * distance;
-        const modelScale = 0.45 + Math.random() * 0.75;
+export function createSnowgiePopulation(scene, groundY, camera, count = 35) {
+  const positions = [new THREE.Vector3()];
+  const minimumSpacingSquared = 49;
+  const screenPosition = new THREE.Vector3();
+  camera.updateMatrixWorld(true);
 
-        const model = cloneSkinnedModel(gltf.scene);
-        const bounds = new THREE.Box3().setFromObject(model);
-        const size = bounds.getSize(new THREE.Vector3());
-        const center = bounds.getCenter(new THREE.Vector3());
-        const baseScale = modelScale / (size.y || 1);
+  return Array.from({ length: count }, () => {
+    const position = new THREE.Vector3();
+    let attempts = 0;
+    let isOnScreen;
+    let isTooClose;
 
-        model.scale.setScalar(baseScale);
-        model.position.set(
-          -center.x * baseScale,
-          groundY - bounds.min.y * baseScale,
-          -center.z * baseScale,
-        );
-
-        const group = new THREE.Group();
-        group.position.set(x, 0, z);
-        group.rotation.y = Math.random() * Math.PI * 2;
-        group.add(model);
-        scene.add(group);
+    do {
+      const side = Math.floor(Math.random() * 4);
+      const edgePosition = THREE.MathUtils.randFloatSpread(190);
+      if (side === 0) {
+        position.set(-95, 0, edgePosition);
+      } else if (side === 1) {
+        position.set(95, 0, edgePosition);
+      } else if (side === 2) {
+        position.set(edgePosition, 0, -95);
+      } else {
+        position.set(edgePosition, 0, 95);
       }
-    })
-    .catch((error) => {
-      console.error('Failed to load /models/snowgie.glb:', error);
-    });
+
+      screenPosition.copy(position).project(camera);
+      isOnScreen = Math.abs(screenPosition.x) <= 1.1
+        && Math.abs(screenPosition.y) <= 1.1;
+      isTooClose = positions.some(
+        (existingPosition) => position.distanceToSquared(existingPosition) < minimumSpacingSquared,
+      );
+      attempts += 1;
+    } while ((isOnScreen || isTooClose) && attempts < 100);
+
+    if (isOnScreen || isTooClose) {
+      throw new Error('Unable to find an off-screen starting position for a snowgie.');
+    }
+
+    positions.push(position.clone());
+    const initialTarget = new THREE.Vector3(
+      THREE.MathUtils.randFloatSpread(40),
+      0,
+      THREE.MathUtils.randFloatSpread(40),
+    );
+    return new Snowgie(scene, groundY, { position, initialTarget });
+  });
 }

@@ -12,7 +12,7 @@ export class SceneManager {
     this.scene.background = fogColor;
     this.scene.fog = new THREE.Fog(fogColor, 100, 200);
 
-    this.cameraViewSize = 60;
+    this.cameraViewSize = 45;
     const aspect = window.innerWidth / window.innerHeight;
     const viewHeight = this.cameraViewSize * Math.max(1, 1 / aspect);
     const viewWidth = viewHeight * aspect;
@@ -24,7 +24,7 @@ export class SceneManager {
       0.1,
       200,
     );
-    this.camera.position.set(0, 60, 45);
+    this.camera.position.set(0, 38, 55);
     this.camera.lookAt(0, 0, 0);
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.5));
