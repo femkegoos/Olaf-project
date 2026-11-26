@@ -1,30 +1,56 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinnedModel } from 'three/addons/utils/SkeletonUtils.js';
 import { Footprints } from './Footprints.js';
+import { createWanderTarget } from './Wander.js';
+
+let snowgieModelPromise = null;
+
+export function loadSnowgieModel() {
+  if (!snowgieModelPromise) {
+    snowgieModelPromise = new Promise((resolve, reject) => {
+      const loader = new GLTFLoader();
+      loader.load(
+        '/models/snowgie.glb',
+        resolve,
+        undefined,
+        reject,
+      );
+    });
+  }
+
+  return snowgieModelPromise;
+}
 
 export class Snowgie {
-  constructor(scene, groundY) {
+  constructor(scene, groundY, options = {}) {
     this.scene = scene;
     this.groundY = groundY;
-    this.footprints = new Footprints(scene, groundY);
+    this.startPosition = options.position
+      ? options.position.clone()
+      : new THREE.Vector3();
+    this.initialTarget = options.initialTarget
+      ? options.initialTarget.clone()
+      : null;
+    this.camera = options.camera || null;
+    this.modelHeight = options.height || 1.5;
+    this.footprints = new Footprints(scene, groundY, this.modelHeight / 1.5);
     this.group = null;
     this.mixer = null;
     this.leftFoot = null;
     this.rightFoot = null;
+    this.leftFootOffset = null;
+    this.rightFootOffset = null;
     this.leftFootRestRotation = 0;
     this.rightFootRestRotation = 0;
     this.movementTime = 0;
-    this.keysPressed = new Set();
-    this.movementKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
-    this.movementSpeed = 2.5;
+    this.movementSpeed = 4;
+    this.currentSpeed = 0;
     this.moveDirection = new THREE.Vector3();
-
-    this.handleKeyDown = this.handleKeyDown.bind(this);
-    this.handleKeyUp = this.handleKeyUp.bind(this);
-    this.clearKeys = this.clearKeys.bind(this);
-    window.addEventListener('keydown', this.handleKeyDown);
-    window.addEventListener('keyup', this.handleKeyUp);
-    window.addEventListener('blur', this.clearKeys);
+    this.separationDirection = new THREE.Vector3();
+    this.neighborOffset = new THREE.Vector3();
+    this.neighbors = [];
+    this.wanderTarget = new THREE.Vector3();
 
     this.loadModel();
   }
@@ -38,23 +64,19 @@ export class Snowgie {
   }
 
   loadModel() {
-    const loader = new GLTFLoader();
-    loader.load(
-      '/models/snowgie.glb',
-      (gltf) => this.addModel(gltf),
-      undefined,
-      (error) => {
+    loadSnowgieModel()
+      .then((gltf) => this.addModel(gltf))
+      .catch((error) => {
         console.error('Failed to load /models/snowgie.glb:', error);
-      },
-    );
+      });
   }
 
   addModel(gltf) {
-    const model = gltf.scene;
+    const model = cloneSkinnedModel(gltf.scene);
     const bounds = new THREE.Box3().setFromObject(model);
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
-    const scale = 1.5 / (size.y || 1);
+    const scale = this.modelHeight / (size.y || 1);
 
     model.scale.setScalar(scale);
     model.position.set(
@@ -64,11 +86,15 @@ export class Snowgie {
     );
 
     this.group = new THREE.Group();
+    this.group.position.copy(this.startPosition);
     this.group.add(model);
     this.scene.add(this.group);
+    this.chooseWanderTarget();
 
     this.leftFoot = model.getObjectByName('bone_L_foot_03');
     this.rightFoot = model.getObjectByName('bone_R_foot_02');
+    this.leftFootOffset = this.getFootOffset(this.leftFoot);
+    this.rightFootOffset = this.getFootOffset(this.rightFoot);
     if (this.leftFoot) {
       this.leftFootRestRotation = this.leftFoot.rotation.x;
     } else {
@@ -87,19 +113,39 @@ export class Snowgie {
     }
   }
 
-  handleKeyDown(event) {
-    if (this.movementKeys.has(event.key)) {
-      event.preventDefault();
-      this.keysPressed.add(event.key);
+  getFootOffset(foot) {
+    if (!foot) {
+      return null;
+    }
+
+    this.group.updateMatrixWorld(true);
+    return this.group.worldToLocal(foot.getWorldPosition(new THREE.Vector3()));
+  }
+
+  chooseWanderTarget() {
+    if (this.initialTarget) {
+      this.wanderTarget.copy(this.initialTarget);
+      this.initialTarget = null;
+      return;
+    }
+
+    let attempts = 0;
+    do {
+      this.wanderTarget.copy(createWanderTarget(this.camera));
+      attempts += 1;
+    } while (
+      this.group
+      && this.group.position.distanceToSquared(this.wanderTarget) < 64
+      && attempts < 10
+    );
+
+    if (this.group && this.group.position.distanceToSquared(this.wanderTarget) < 64) {
+      this.wanderTarget.copy(createWanderTarget(null));
     }
   }
 
-  handleKeyUp(event) {
-    this.keysPressed.delete(event.key);
-  }
-
-  clearKeys() {
-    this.keysPressed.clear();
+  setNeighbors(snowgies) {
+    this.neighbors = snowgies.filter((snowgie) => snowgie !== this);
   }
 
   update(delta) {
@@ -107,26 +153,78 @@ export class Snowgie {
       return null;
     }
 
-    this.moveDirection.set(
-      Number(this.keysPressed.has('ArrowRight')) - Number(this.keysPressed.has('ArrowLeft')),
-      0,
-      Number(this.keysPressed.has('ArrowDown')) - Number(this.keysPressed.has('ArrowUp')),
-    );
-
-    const isMoving = this.moveDirection.lengthSq() > 0;
-    if (isMoving) {
-      this.moveDirection.normalize();
-      this.group.position.addScaledVector(this.moveDirection, this.movementSpeed * delta);
-      this.group.rotation.y = Math.atan2(this.moveDirection.x, this.moveDirection.z);
-      this.movementTime += delta;
+    this.moveDirection.subVectors(this.wanderTarget, this.group.position);
+    let distanceToTarget = this.moveDirection.length();
+    if (distanceToTarget < 2.5) {
+      this.chooseWanderTarget();
+      this.moveDirection.subVectors(this.wanderTarget, this.group.position);
+      distanceToTarget = this.moveDirection.length();
     }
+
+    this.moveDirection.normalize();
+    this.separationDirection.set(0, 0, 0);
+    const separationRadius = 6;
+    for (const neighbor of this.neighbors) {
+      if (!neighbor.group) {
+        continue;
+      }
+
+      const distance = this.group.position.distanceTo(neighbor.group.position);
+      if (distance > 0 && distance < separationRadius) {
+        this.neighborOffset
+          .subVectors(this.group.position, neighbor.group.position)
+          .normalize();
+        this.separationDirection.addScaledVector(
+          this.neighborOffset,
+          1 - distance / separationRadius,
+        );
+      }
+    }
+
+    if (this.separationDirection.lengthSq() > 0) {
+      this.moveDirection
+        .addScaledVector(this.separationDirection, 2.5)
+        .normalize();
+    }
+
+    const targetRotation = Math.atan2(this.moveDirection.x, this.moveDirection.z);
+    const rotationDelta = Math.atan2(
+      Math.sin(targetRotation - this.group.rotation.y),
+      Math.cos(targetRotation - this.group.rotation.y),
+    );
+    this.group.rotation.y += rotationDelta * (1 - Math.exp(-5 * delta));
+    this.moveDirection.set(
+      Math.sin(this.group.rotation.y),
+      0,
+      Math.cos(this.group.rotation.y),
+    );
+    const targetSpeed = this.movementSpeed * (
+      0.45 + 0.55 * THREE.MathUtils.smoothstep(distanceToTarget, 2.5, 6)
+    );
+    this.currentSpeed = THREE.MathUtils.damp(
+      this.currentSpeed,
+      targetSpeed,
+      4,
+      delta,
+    );
+    const isMoving = this.currentSpeed > 0.35;
+    this.footprints.update(
+      delta,
+      isMoving,
+      this.group,
+      this.leftFootOffset,
+      this.rightFootOffset,
+    );
+    this.group.position.addScaledVector(
+      this.moveDirection,
+      Math.min(this.currentSpeed * delta, distanceToTarget),
+    );
+    this.movementTime += delta;
 
     this.animateFeet(isMoving, delta);
     if (this.mixer) {
       this.mixer.update(delta);
     }
-
-    this.footprints.update(delta, isMoving, this.group, this.leftFoot, this.rightFoot);
 
     return this.group.position;
   }
