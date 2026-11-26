@@ -8,15 +8,17 @@ export class Footprints {
     this.nextFootIsLeft = true;
     this.footPosition = new THREE.Vector3();
     this.footprints = [];
-    // Tijd in seconden voordat een voetafdruk automatisch verdwijnt.
-    this.lifetime = 8;
+    this.lifetime = 3.5;
+    this.baseOpacity = 0.55;
     // Pas 0.12 seconden aan om de stapfrequentie en afstand tussen afdrukken te wijzigen.
     this.stepInterval = 0.12;
     this.geometry = this.createGeometry();
+    this.softEdgeTexture = this.createSoftEdgeTexture();
     this.material = new THREE.MeshBasicMaterial({
       color: '#a9c5d8',
+      map: this.softEdgeTexture,
       transparent: true,
-      opacity: 0.55,
+      opacity: this.baseOpacity,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -46,6 +48,33 @@ export class Footprints {
     return geometry;
   }
 
+  createSoftEdgeTexture() {
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Unable to create the footprint edge texture.');
+    }
+
+    const gradient = context.createRadialGradient(
+      size / 2,
+      size / 2,
+      size * 0.32,
+      size / 2,
+      size / 2,
+      size / 2,
+    );
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, size, size);
+
+    return new THREE.CanvasTexture(canvas);
+  }
+
   addFootprint(group, leftFoot, rightFoot, isLeft) {
     let foot = rightFoot;
     if (isLeft) {
@@ -66,7 +95,7 @@ export class Footprints {
 
     this.footPosition.y = this.groundY + 0.005;
     const direction = group.rotation.y;
-    const footprint = new THREE.Mesh(this.geometry, this.material);
+    const footprint = new THREE.Mesh(this.geometry, this.material.clone());
     footprint.position.copy(this.footPosition);
     const lateralOffset = THREE.MathUtils.randFloatSpread(0.04);
     const forwardOffset = THREE.MathUtils.randFloatSpread(0.04);
@@ -100,7 +129,11 @@ export class Footprints {
 
       if (footprint.age >= this.lifetime) {
         this.scene.remove(footprint.mesh);
+        footprint.mesh.material.dispose();
         this.footprints.splice(i, 1);
+      } else {
+        const remainingLife = 1 - footprint.age / this.lifetime;
+        footprint.mesh.material.opacity = this.baseOpacity * remainingLife;
       }
     }
   }
