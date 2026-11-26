@@ -22,6 +22,7 @@ export class Footprints {
       side: THREE.DoubleSide,
     });
   }
+  
 
   update(delta, isMoving, group, leftFootOffset, rightFootOffset) {
     this.updateExistingFootprints(delta);
