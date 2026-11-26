@@ -8,7 +8,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 
 const scene = new THREE.Scene();
-const fogColor = new THREE.Color('#dce8f0');
+const fogColor = new THREE.Color('#dceefa');
 scene.background = fogColor;
 scene.fog = new THREE.Fog(fogColor, 12, 45);
 
