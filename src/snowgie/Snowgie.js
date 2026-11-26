@@ -2,6 +2,24 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Footprints } from './Footprints.js';
 
+let snowgieModelPromise = null;
+
+export function loadSnowgieModel() {
+  if (!snowgieModelPromise) {
+    snowgieModelPromise = new Promise((resolve, reject) => {
+      const loader = new GLTFLoader();
+      loader.load(
+        '/models/snowgie.glb',
+        resolve,
+        undefined,
+        reject,
+      );
+    });
+  }
+
+  return snowgieModelPromise;
+}
+
 export class Snowgie {
   constructor(scene, groundY) {
     this.scene = scene;
@@ -38,19 +56,15 @@ export class Snowgie {
   }
 
   loadModel() {
-    const loader = new GLTFLoader();
-    loader.load(
-      '/models/snowgie.glb',
-      (gltf) => this.addModel(gltf),
-      undefined,
-      (error) => {
+    loadSnowgieModel()
+      .then((gltf) => this.addModel(gltf))
+      .catch((error) => {
         console.error('Failed to load /models/snowgie.glb:', error);
-      },
-    );
+      });
   }
 
   addModel(gltf) {
-    const model = gltf.scene;
+    const model = gltf.scene.clone(true);
     const bounds = new THREE.Box3().setFromObject(model);
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
