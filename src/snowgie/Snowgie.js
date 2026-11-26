@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinnedModel } from 'three/addons/utils/SkeletonUtils.js';
 import { Footprints } from './Footprints.js';
-import { createWanderTarget } from './Wander.js';
+import { createWanderTarget, getWanderRestBreakDuration } from './Wander.js';
 
 let snowgieModelPromise = null;
 
@@ -39,13 +39,21 @@ export class Snowgie {
     this.mixer = null;
     this.leftFoot = null;
     this.rightFoot = null;
+    this.pelvis = null;
+    this.pelvisRestPosition = null;
+    this.leftFootRestPosition = null;
+    this.rightFootRestPosition = null;
     this.leftFootOffset = null;
     this.rightFootOffset = null;
     this.leftFootRestRotation = 0;
     this.rightFootRestRotation = 0;
+    this.isResting = false;
+    this.sitsDuringRest = false;
+    this.sitProgress = 0;
     this.movementTime = 0;
     this.movementSpeed = 4;
     this.currentSpeed = 0;
+    this.restTimeRemaining = 0;
     this.moveDirection = new THREE.Vector3();
     this.separationDirection = new THREE.Vector3();
     this.neighborOffset = new THREE.Vector3();
@@ -91,8 +99,12 @@ export class Snowgie {
     this.scene.add(this.group);
     this.chooseWanderTarget();
 
+    this.pelvis = model.getObjectByName('bone_pelvis_00');
     this.leftFoot = model.getObjectByName('bone_L_foot_03');
     this.rightFoot = model.getObjectByName('bone_R_foot_02');
+    this.pelvisRestPosition = this.pelvis ? this.pelvis.position.clone() : null;
+    this.leftFootRestPosition = this.leftFoot ? this.leftFoot.position.clone() : null;
+    this.rightFootRestPosition = this.rightFoot ? this.rightFoot.position.clone() : null;
     this.leftFootOffset = this.getFootOffset(this.leftFoot);
     this.rightFootOffset = this.getFootOffset(this.rightFoot);
     if (this.leftFoot) {
@@ -153,9 +165,29 @@ export class Snowgie {
       return null;
     }
 
+    if (this.isResting) {
+      this.restTimeRemaining = Math.max(0, this.restTimeRemaining - delta);
+      if (this.restTimeRemaining > 0 || this.sitProgress > 0.02) {
+        return this.updateResting(delta);
+      }
+
+      this.isResting = false;
+      this.sitsDuringRest = false;
+      this.sitProgress = 0;
+      this.applySittingPose();
+      this.chooseWanderTarget();
+    }
+
     this.moveDirection.subVectors(this.wanderTarget, this.group.position);
     let distanceToTarget = this.moveDirection.length();
     if (distanceToTarget < 2.5) {
+      this.restTimeRemaining = getWanderRestBreakDuration();
+      if (this.restTimeRemaining > 0) {
+        this.isResting = true;
+        this.sitsDuringRest = Math.random() < 0.5;
+        return this.updateResting(delta);
+      }
+
       this.chooseWanderTarget();
       this.moveDirection.subVectors(this.wanderTarget, this.group.position);
       distanceToTarget = this.moveDirection.length();
@@ -229,14 +261,64 @@ export class Snowgie {
     return this.group.position;
   }
 
+  updateResting(delta) {
+    this.currentSpeed = 0;
+    this.sitProgress = THREE.MathUtils.damp(
+      this.sitProgress,
+      this.sitsDuringRest && this.restTimeRemaining > 0 ? 1 : 0,
+      2,
+      delta,
+    );
+    this.applySittingPose();
+    this.footprints.update(
+      delta,
+      false,
+      this.group,
+      this.leftFootOffset,
+      this.rightFootOffset,
+    );
+    this.animateFeet(false, delta);
+    if (this.mixer) {
+      this.mixer.update(delta);
+    }
+
+    return this.group.position;
+  }
+
+  applySittingPose() {
+    const sitDepth = 0.45 * this.sitProgress;
+    const footForwardOffset = 0.35 * this.sitProgress;
+    if (this.pelvis && this.pelvisRestPosition) {
+      this.pelvis.position.y = this.pelvisRestPosition.y - sitDepth;
+    }
+
+    this.group.updateMatrixWorld(true);
+    for (const [foot, restPosition] of [
+      [this.leftFoot, this.leftFootRestPosition],
+      [this.rightFoot, this.rightFootRestPosition],
+    ]) {
+      if (!foot || !restPosition || !foot.parent) {
+        continue;
+      }
+
+      const localOffset = new THREE.Vector3(0, sitDepth, 0)
+        .applyQuaternion(foot.parent.getWorldQuaternion(new THREE.Quaternion()).invert())
+        .divide(foot.parent.getWorldScale(new THREE.Vector3()));
+      foot.position.copy(restPosition).add(localOffset);
+      foot.position.y = restPosition.y + footForwardOffset;
+    }
+  }
+
   animateFeet(isMoving, delta) {
     const footSwing = Math.sin(this.movementTime * 10) * 0.55;
+    const sittingFootRotation = -0.9 * this.sitProgress;
 
     if (this.leftFoot) {
       let targetRotation = this.leftFootRestRotation;
       if (isMoving) {
         targetRotation = this.leftFootRestRotation + footSwing;
       }
+      targetRotation += sittingFootRotation;
 
       this.leftFoot.rotation.x = THREE.MathUtils.damp(
         this.leftFoot.rotation.x,
@@ -251,6 +333,7 @@ export class Snowgie {
       if (isMoving) {
         targetRotation = this.rightFootRestRotation - footSwing;
       }
+      targetRotation += sittingFootRotation;
 
       this.rightFoot.rotation.x = THREE.MathUtils.damp(
         this.rightFoot.rotation.x,

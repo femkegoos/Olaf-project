@@ -29,3 +29,8 @@ export function createWanderTarget(camera) {
     THREE.MathUtils.randFloatSpread(180),
   );
 }
+
+export function getWanderRestBreakDuration(minSeconds = 2, maxSeconds = 8) {
+  if (Math.random() >= 0.2) return 0;
+  return THREE.MathUtils.randFloat(minSeconds, maxSeconds);
+}
