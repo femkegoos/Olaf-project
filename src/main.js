@@ -7,7 +7,6 @@ const canvas = document.querySelector('#scene');
 const sceneManager = new SceneManager(canvas);
 const snowgie = new Snowgie(sceneManager.scene, sceneManager.ground.position.y);
 const clock = new THREE.Clock();
-
 function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
   const snowgiePosition = snowgie.update(delta);
