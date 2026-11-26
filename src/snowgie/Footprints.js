@@ -24,6 +24,7 @@ export class Footprints {
     });
   }
 
+  
   update(delta, isMoving, group, leftFoot, rightFoot) {
     this.updateExistingFootprints(delta);
 
