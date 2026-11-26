@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { Footprints } from './Footprints.js';
 
 export class Snowgie {
   constructor(scene, groundY) {
     this.scene = scene;
     this.groundY = groundY;
+    this.footprints = new Footprints(scene, groundY);
     this.group = null;
     this.mixer = null;
     this.leftFoot = null;
@@ -28,7 +30,11 @@ export class Snowgie {
   }
 
   get position() {
-    return this.group ? this.group.position : null;
+    if (this.group) {
+      return this.group.position;
+    }
+
+    return null;
   }
 
   loadModel() {
@@ -63,8 +69,17 @@ export class Snowgie {
 
     this.leftFoot = model.getObjectByName('bone_L_foot_03');
     this.rightFoot = model.getObjectByName('bone_R_foot_02');
-    this.leftFootRestRotation = this.leftFoot?.rotation.x ?? 0;
-    this.rightFootRestRotation = this.rightFoot?.rotation.x ?? 0;
+    if (this.leftFoot) {
+      this.leftFootRestRotation = this.leftFoot.rotation.x;
+    } else {
+      this.leftFootRestRotation = 0;
+    }
+
+    if (this.rightFoot) {
+      this.rightFootRestRotation = this.rightFoot.rotation.x;
+    } else {
+      this.rightFootRestRotation = 0;
+    }
 
     if (gltf.animations.length > 0) {
       this.mixer = new THREE.AnimationMixer(model);
@@ -107,7 +122,12 @@ export class Snowgie {
     }
 
     this.animateFeet(isMoving, delta);
-    this.mixer?.update(delta);
+    if (this.mixer) {
+      this.mixer.update(delta);
+    }
+
+    this.footprints.update(delta, isMoving, this.group, this.leftFoot, this.rightFoot);
+
     return this.group.position;
   }
 
@@ -115,9 +135,11 @@ export class Snowgie {
     const footSwing = Math.sin(this.movementTime * 10) * 0.55;
 
     if (this.leftFoot) {
-      const targetRotation = isMoving
-        ? this.leftFootRestRotation + footSwing
-        : this.leftFootRestRotation;
+      let targetRotation = this.leftFootRestRotation;
+      if (isMoving) {
+        targetRotation = this.leftFootRestRotation + footSwing;
+      }
+
       this.leftFoot.rotation.x = THREE.MathUtils.damp(
         this.leftFoot.rotation.x,
         targetRotation,
@@ -127,9 +149,11 @@ export class Snowgie {
     }
 
     if (this.rightFoot) {
-      const targetRotation = isMoving
-        ? this.rightFootRestRotation - footSwing
-        : this.rightFootRestRotation;
+      let targetRotation = this.rightFootRestRotation;
+      if (isMoving) {
+        targetRotation = this.rightFootRestRotation - footSwing;
+      }
+
       this.rightFoot.rotation.x = THREE.MathUtils.damp(
         this.rightFoot.rotation.x,
         targetRotation,

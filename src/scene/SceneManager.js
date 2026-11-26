@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { createSnowTexture } from '../textures/snowTexture.js';
 
 export class SceneManager {
   constructor(canvas) {
@@ -32,7 +33,11 @@ export class SceneManager {
 
     this.ground = new THREE.Mesh(
       new THREE.PlaneGeometry(200, 200),
-      new THREE.MeshStandardMaterial({ color: '#f6f9fc' }),
+      new THREE.MeshStandardMaterial({
+        color: '#f2f8ff',
+        map: createSnowTexture(),
+        roughness: 0.95,
+      }),
     );
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.position.y = -0.8;
