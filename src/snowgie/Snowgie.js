@@ -129,7 +129,19 @@ export class Snowgie {
       return;
     }
 
-    this.wanderTarget.copy(createWanderTarget(this.camera));
+    let attempts = 0;
+    do {
+      this.wanderTarget.copy(createWanderTarget(this.camera));
+      attempts += 1;
+    } while (
+      this.group
+      && this.group.position.distanceToSquared(this.wanderTarget) < 64
+      && attempts < 10
+    );
+
+    if (this.group && this.group.position.distanceToSquared(this.wanderTarget) < 64) {
+      this.wanderTarget.copy(createWanderTarget(null));
+    }
   }
 
   setNeighbors(snowgies) {
@@ -143,7 +155,7 @@ export class Snowgie {
 
     this.moveDirection.subVectors(this.wanderTarget, this.group.position);
     let distanceToTarget = this.moveDirection.length();
-    if (distanceToTarget < 1.5) {
+    if (distanceToTarget < 2.5) {
       this.chooseWanderTarget();
       this.moveDirection.subVectors(this.wanderTarget, this.group.position);
       distanceToTarget = this.moveDirection.length();
@@ -186,8 +198,9 @@ export class Snowgie {
       0,
       Math.cos(this.group.rotation.y),
     );
-    const targetSpeed = this.movementSpeed
-      * THREE.MathUtils.smoothstep(distanceToTarget, 1.5, 5);
+    const targetSpeed = this.movementSpeed * (
+      0.45 + 0.55 * THREE.MathUtils.smoothstep(distanceToTarget, 2.5, 6)
+    );
     this.currentSpeed = THREE.MathUtils.damp(
       this.currentSpeed,
       targetSpeed,
